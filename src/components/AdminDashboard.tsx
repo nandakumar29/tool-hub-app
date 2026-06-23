@@ -115,9 +115,17 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
           handleLogout();
           throw new Error('Access token expired or unauthorized. Please re-authenticate.');
         }
-        throw new Error('Failed to fetch real-time analytics data parameters from SQLite database.');
       }
-      const data = await res.json();
+
+      let data;
+      const contentType = res.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const textPayload = await res.text();
+        throw new Error(`Server returned non-JSON/error (HTTP ${res.status}): ${textPayload.substring(0, 120)}`);
+      }
+
       if (data && data.success) {
         setAnalyticsData(data);
       } else {
@@ -146,16 +154,25 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
-      const data = await res.json();
+
+      let data;
+      const contentType = res.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const textPayload = await res.text();
+        throw new Error(`Server returned non-JSON/error (HTTP ${res.status}): ${textPayload.substring(0, 120)}`);
+      }
+
       if (data && data.success && data.token) {
         setToken(data.token);
         sessionStorage.setItem('toolhub_admin_token', data.token);
         fetchAnalytics(data.token);
       } else {
-        setLoginError(data.error || 'Access Denied: Invalid cryptographic admin credentials.');
+        setLoginError(data.error || 'Access Denied: Invalid credentials.');
       }
     } catch (err: any) {
-      setLoginError('Error connecting to the analytical routing engine. Please try again.');
+      setLoginError(`Analytical link error: ${err.message || 'Connection failure encountered.'}`);
     } finally {
       setLoginLoading(false);
     }

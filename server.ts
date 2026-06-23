@@ -4,6 +4,9 @@ import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import Database from 'better-sqlite3';
 import { TOOLS } from './src/data/tools';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const app = express();
 const PORT = 3000;
