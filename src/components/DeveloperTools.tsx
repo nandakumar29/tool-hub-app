@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Braces, Binary, Shield, Fingerprint, Link, Copy, Check, ArrowDownUp, AlertCircle, RefreshCw, FileCode } from 'lucide-react';
+import { Braces, Binary, Shield, Fingerprint, Link, Copy, Check, ArrowDownUp, AlertCircle, RefreshCw, FileCode, Code, Play, Terminal, Cpu, ArrowLeftRight } from 'lucide-react';
+import { CODE_TEMPLATES, translateCode, executeCodeSandbox, simulateCompiler } from '../utils/codeTranslator';
 
 // --- HELPERS FOR JSON TO MODEL CONVERTER ---
 const toCamel = (str: string): string => {
@@ -871,6 +872,68 @@ export default function DeveloperTools({ toolId }: DeveloperToolsProps) {
   }, [convJsonInput, convTargetLang, convClassName]);
 
 
+  // --- 7. CODE COMPILER & CONVERTER STATE & LOGIC ---
+  const [compilerMode, setCompilerMode] = useState<'convert' | 'sandbox'>('convert');
+  const [convSrcLang, setConvSrcLang] = useState<string>('typescript');
+  const [convDstLang, setConvDstLang] = useState<string>('python');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('fibonacci');
+  const [compilerCodeInput, setCompilerCodeInput] = useState<string>(CODE_TEMPLATES.fibonacci.snippets.typescript);
+  const [compilerCodeOutput, setCompilerCodeOutput] = useState<string>('');
+  const [compilerExecutionError, setCompilerExecutionError] = useState<string | null>(null);
+  const [compilerExecutionDuration, setCompilerExecutionDuration] = useState<number>(0);
+
+  // Trigger translation
+  useEffect(() => {
+    if (compilerMode === 'convert' && toolId === 'code-compiler-converter') {
+      try {
+        const translated = translateCode(compilerCodeInput, convSrcLang, convDstLang);
+        setCompilerCodeOutput(translated);
+      } catch (err: any) {
+        setCompilerCodeOutput('Translation Error: ' + err.message);
+      }
+    }
+  }, [compilerCodeInput, convSrcLang, convDstLang, compilerMode, toolId]);
+
+  // Load selected templates
+  useEffect(() => {
+    if (toolId === 'code-compiler-converter') {
+      const tpl = CODE_TEMPLATES[selectedTemplateId];
+      if (tpl && tpl.snippets[convSrcLang]) {
+        setCompilerCodeInput(tpl.snippets[convSrcLang]);
+        setCompilerCodeOutput('');
+        setCompilerExecutionError(null);
+        setCompilerExecutionDuration(0);
+      }
+    }
+  }, [selectedTemplateId, convSrcLang, toolId]);
+
+  // Run/Simulate compilation sandbox
+  const handleRunCodeCompiler = () => {
+    setCompilerExecutionError(null);
+    setCompilerCodeOutput('Executing and compiling script files inside browser...');
+    
+    setTimeout(() => {
+      try {
+        if (convSrcLang === 'typescript' || convSrcLang === 'javascript') {
+          const res = executeCodeSandbox(compilerCodeInput);
+          setCompilerCodeOutput(res.output);
+          setCompilerExecutionError(res.error);
+          setCompilerExecutionDuration(res.duration);
+        } else {
+          const res = simulateCompiler(compilerCodeInput, convSrcLang);
+          setCompilerCodeOutput(res.output);
+          setCompilerExecutionError(res.error);
+          setCompilerExecutionDuration(res.duration);
+        }
+      } catch (err: any) {
+        setCompilerExecutionError(err.message || 'Error occurred during execution');
+        setCompilerCodeOutput('');
+      }
+    }, 150);
+  };
+
+
+
   return (
     <div className="w-full">
       {/* 1. JSON FORMATTER UI */}
@@ -1302,6 +1365,261 @@ export default function DeveloperTools({ toolId }: DeveloperToolsProps) {
                 placeholder="Compiled model files will output here dynamically..."
                 className="w-full h-96 px-3.5 py-3 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-mono bg-zinc-100/50 dark:bg-zinc-950/70 text-zinc-800 dark:text-zinc-200 focus:outline-none whitespace-pre overflow-y-auto leading-relaxed"
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7. CODE COMPILER & CONVERTER UI */}
+      {toolId === 'code-compiler-converter' && (
+        <div className="space-y-6" id="code-compiler-converter-block">
+          {/* Top Options & Modes Tab */}
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-md font-bold text-zinc-900 dark:text-white flex items-center gap-2">
+                  <Terminal className="w-5 h-5 text-indigo-600" />
+                  Code Compiler & Language Converter Suite
+                </h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                  Draft logic scripts, translate programming dialects, or compile/simulate your algorithm logic live.
+                </p>
+              </div>
+
+              {/* Mode switch pills */}
+              <div className="flex bg-zinc-100 dark:bg-zinc-950 p-1 rounded-xl self-start sm:self-auto border border-zinc-200/50 dark:border-zinc-800/50">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCompilerMode('convert');
+                    setCompilerCodeOutput('');
+                  }}
+                  className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                    compilerMode === 'convert'
+                      ? 'bg-indigo-650 text-white shadow-xs'
+                      : 'text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-850'
+                  }`}
+                >
+                  <ArrowLeftRight className="w-3.5 h-3.5" />
+                  Code Translator
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCompilerMode('sandbox');
+                    setCompilerCodeOutput('');
+                  }}
+                  className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                    compilerMode === 'sandbox'
+                      ? 'bg-indigo-650 text-white shadow-xs'
+                      : 'text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-850'
+                  }`}
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  Compiler Sandbox
+                </button>
+              </div>
+            </div>
+
+            {/* Template select pill rows */}
+            <div className="border-t border-zinc-150 dark:border-zinc-850 pt-4">
+              <span className="block text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest mb-2.5">
+                Select Algorithm Blueprint Template
+              </span>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {Object.entries(CODE_TEMPLATES).map(([tplId, item]) => (
+                  <button
+                    key={tplId}
+                    type="button"
+                    onClick={() => setSelectedTemplateId(tplId)}
+                    className={`text-left p-2.5 border rounded-xl transition cursor-pointer flex flex-col justify-between ${
+                      selectedTemplateId === tplId
+                        ? 'border-indigo-600/60 bg-indigo-50/15 dark:bg-indigo-950/20'
+                        : 'border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/20 hover:bg-zinc-50 dark:hover:bg-zinc-950'
+                    }`}
+                  >
+                    <span className="text-xs font-bold text-zinc-900 dark:text-white flex items-center gap-1.5">
+                      <Code className="w-3.5 h-3.5 text-indigo-500" />
+                      {item.name}
+                    </span>
+                    <span className="text-[10px] text-zinc-500 dark:text-zinc-500 mt-1 line-clamp-1">{item.description}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Config row for languages */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-12 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-xs space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                {/* Source Select */}
+                <div className="flex-1">
+                  <label className="block text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest mb-1.5">
+                    Source Language
+                  </label>
+                  <select
+                    value={convSrcLang}
+                    onChange={(e) => setConvSrcLang(e.target.value)}
+                    className="w-full px-3 py-2 text-xs font-bold bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="typescript">TypeScript</option>
+                    <option value="javascript">JavaScript</option>
+                    <option value="python">Python 3</option>
+                    <option value="go">Go Lang</option>
+                    <option value="java">Java Standard</option>
+                    <option value="kotlin">Kotlin / Android</option>
+                    <option value="swift">Swift / Apple</option>
+                    <option value="dart">Dart / Flutter</option>
+                    <option value="csharp">C# (.NET)</option>
+                    <option value="rust">Rust Lang</option>
+                    <option value="php">PHP Script</option>
+                  </select>
+                </div>
+
+                {/* Translation Swap Indicator icon */}
+                {compilerMode === 'convert' && (
+                  <div className="flex items-center justify-center pt-3 md:pt-0">
+                    <div className="bg-indigo-50 dark:bg-indigo-950/50 p-2 rounded-full border border-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                      <ArrowLeftRight className="w-4 h-4" />
+                    </div>
+                  </div>
+                )}
+
+                {/* Target Select for translation */}
+                {compilerMode === 'convert' && (
+                  <div className="flex-1">
+                    <label className="block text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest mb-1.5">
+                      Target Language & Dialect
+                    </label>
+                    <select
+                      value={convDstLang}
+                      onChange={(e) => setConvDstLang(e.target.value)}
+                      className="w-full px-3 py-2 text-xs font-bold bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="typescript">TypeScript</option>
+                      <option value="javascript">JavaScript</option>
+                      <option value="python">Python 3</option>
+                      <option value="go">Go Lang</option>
+                      <option value="java">Java Standard</option>
+                      <option value="kotlin">Kotlin / Android</option>
+                      <option value="swift">Swift / Apple</option>
+                      <option value="dart">Dart / Flutter</option>
+                      <option value="csharp">C# (.NET)</option>
+                      <option value="rust">Rust Lang</option>
+                      <option value="php">PHP Script</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Compile Actions Button block (when sandbox active) */}
+                {compilerMode === 'sandbox' && (
+                  <div className="flex items-end justify-end">
+                    <button
+                      type="button"
+                      onClick={handleRunCodeCompiler}
+                      className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition duration-150 cursor-pointer"
+                    >
+                      <Cpu className="w-4 h-4" />
+                      Run & Compile Sandbox
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Split layout: Editor panel VS Output console */}
+            <div className="lg:col-span-6 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-650 dark:text-zinc-350">
+                    Source Editor Snippet ({convSrcLang})
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setCompilerCodeInput('')}
+                    className="text-[10px] text-zinc-400 hover:text-red-500 font-bold transition"
+                  >
+                    Clear Editor
+                  </button>
+                </div>
+
+                <div className="relative font-mono text-xs">
+                  {/* Mock editor syntax display */}
+                  <textarea
+                    value={compilerCodeInput}
+                    onChange={(e) => setCompilerCodeInput(e.target.value)}
+                    placeholder={`Write or paste your custom ${convSrcLang} scripts here...`}
+                    className="w-full h-96 p-3.5 border border-zinc-200 dark:border-zinc-800 rounded-xl bg-zinc-50 dark:bg-zinc-950 font-mono text-xs leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500 overflow-y-auto whitespace-pre tab-size-2"
+                    spellCheck="false"
+                  />
+                </div>
+              </div>
+
+              {/* Console metadata/hints */}
+              <div className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-2 font-medium">
+                {compilerMode === 'convert' 
+                  ? '💡 Changing editor contents translates target outputs dynamically.' 
+                  : '💡 TypeScript and JS run natively below in safe sandbox frame environments; other interpreters simulate structural outputs.'}
+              </div>
+            </div>
+
+            {/* Compiled Display Output */}
+            <div className="lg:col-span-6 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 flex flex-col justify-between shadow-xs">
+              <div>
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-650 dark:text-zinc-350">
+                    {compilerMode === 'convert' ? 'Translated Result representation' : 'Terminal output / console'}
+                  </h3>
+                  {compilerCodeOutput && (
+                    <button
+                      onClick={() => triggerCopy(compilerCodeOutput, 'compiler_out')}
+                      className="px-2.5 py-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-lg flex items-center gap-1 text-[11px] text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300 font-semibold border border-zinc-200/50 dark:border-zinc-800/50 bg-white dark:bg-zinc-900 cursor-pointer shadow-xs transition"
+                    >
+                      {copied === 'compiler_out' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-indigo-650" />}
+                      {copied === 'compiler_out' ? 'Snippet Copied' : 'Copy Output'}
+                    </button>
+                  )}
+                </div>
+
+                {/* Compilation diagnostic success banner */}
+                {compilerMode === 'sandbox' && compilerCodeOutput && !compilerExecutionError && (
+                  <div className="mb-3 p-2.5 bg-emerald-500/10 border border-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-xl text-xs flex items-center gap-2 font-bold justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      Compiled & run successfully
+                    </span>
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-650 dark:text-emerald-300 px-1.5 py-0.5 rounded-md font-mono">
+                      time: {compilerExecutionDuration}ms
+                    </span>
+                  </div>
+                )}
+
+                {/* Interactive Diagnostic Compilation Warning error */}
+                {compilerExecutionError && (
+                  <div className="mb-3 p-3 bg-red-500/10 border border-red-500/15 text-rose-700 dark:text-rose-400 rounded-xl flex items-start gap-2 text-xs font-semibold">
+                    <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">Execution Error:</span>
+                      <p className="font-mono mt-1 text-[10px] break-all whitespace-pre-wrap">{compilerExecutionError}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Output Console Viewport */}
+                <div className="relative">
+                  <textarea
+                    readOnly
+                    value={compilerCodeOutput}
+                    placeholder={
+                      compilerMode === 'convert'
+                        ? 'Live translated results will stream out dynamically as you write in the editor pane...'
+                        : 'Simulated standard console diagnostic streams and outputs will compile here click the Run button above!'
+                    }
+                    className="w-full h-96 p-3.5 border border-zinc-200 dark:border-zinc-800 rounded-xl bg-zinc-950 text-zinc-100 font-mono text-xs leading-relaxed focus:outline-none whitespace-pre overflow-y-auto"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>

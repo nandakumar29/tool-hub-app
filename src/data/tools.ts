@@ -251,6 +251,26 @@ export const TOOLS: Tool[] = [
     detailedContent: 'Convert any nested JSON structure into robust model definitions. Our client-side analyzer parses input strings, maps standard primitives, handles arrays of nested schemas, and outputs formatted class layouts for your target frameworks.',
     relatedTools: ['json-formatter', 'base64-encode-decode', 'jwt-decoder']
   },
+  {
+    id: 'code-compiler-converter',
+    name: 'Code Compiler & Converter',
+    description: 'Instantly translate program scripts between programming languages and execute or simulate standard logic patterns live inside your browser.',
+    category: 'developer',
+    icon: 'Terminal',
+    seoDescription: 'Free online Code Compiler, Sandbox and Language Converter. Safely translate and simulate execution of TS/JS, Python, Dart, Kotlin, Java, C#, Go, Rust and PHP scripts.',
+    faqs: [
+      {
+        question: 'Which languages can I convert between?',
+        answer: 'You can translate back and forth among JavaScript, TypeScript, Python, Go, Java, Kotlin, Swift, Dart, C#, Rust, and PHP.'
+      },
+      {
+        question: 'How does the online execution compiler work?',
+        answer: 'For safety, client-side execution runs JavaScript/TypeScript code securely using local sandboxes. For other languages, it wraps and runs via an advanced client-side AST interpreter simulation that handles variables, functions, conditions, loops, and prints directly to the simulated console.'
+      }
+    ],
+    detailedContent: 'Write, translate, and run code instantly. Toggle between "Code Converter" to parse and translate syntax structures, or choose the interactive "Simulated Compiler Sandbox" to test and execute scripts.',
+    relatedTools: ['json-to-model', 'json-formatter', 'base64-encode-decode']
+  },
 
   // --- UTILITY TOOLS ---
   {

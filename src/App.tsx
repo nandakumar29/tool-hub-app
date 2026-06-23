@@ -296,13 +296,15 @@ Sitemap: https://tool-hub-app.vercel.app/sitemap.xml`;
           id="home-view-container"
         >
           {/* Main Hero Header */}
-          <section className="bg-gradient-to-br from-slate-50 via-indigo-50/40 to-white text-zinc-900 dark:from-zinc-950 dark:via-indigo-950 dark:to-zinc-900 dark:text-white py-20 px-4 text-center relative overflow-hidden border-b border-zinc-200/80 dark:border-zinc-850">
-            {/* Grid background styling */}
-            <div className="absolute inset-0 opacity-[0.07] dark:opacity-15 bg-[linear-gradient(to_right,#6366f1_1px,transparent_1px),linear-gradient(to_bottom,#6366f1_1px,transparent_1px)] bg-[size:32px_32px]"></div>
-            
-            {/* Ambient radial glow lights */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-500/5 dark:bg-indigo-500/10 blur-[130px] rounded-full pointer-events-none"></div>
-            <div className="absolute -top-10 right-10 w-72 h-72 bg-emerald-500/5 dark:bg-emerald-500/10 blur-[100px] rounded-full pointer-events-none"></div>
+          <section className="bg-gradient-to-br from-slate-50 via-indigo-50/40 to-white text-zinc-900 dark:from-zinc-950 dark:via-indigo-950 dark:to-zinc-900 dark:text-white py-20 px-4 text-center relative border-b border-zinc-200/80 dark:border-zinc-850">
+            {/* Grid background styling within dedicated pointer-events-none layer to allow autocomplete list overlays to overflow container beautifully without layout clipping */}
+            <div className="absolute inset-0 overflow-hidden rounded-none pointer-events-none">
+              <div className="absolute inset-0 opacity-[0.07] dark:opacity-15 bg-[linear-gradient(to_right,#6366f1_1px,transparent_1px),linear-gradient(to_bottom,#6366f1_1px,transparent_1px)] bg-[size:32px_32px]"></div>
+              
+              {/* Ambient radial glow lights */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-500/5 dark:bg-indigo-500/10 blur-[130px] rounded-full pointer-events-none"></div>
+              <div className="absolute -top-10 right-10 w-72 h-72 bg-emerald-500/5 dark:bg-emerald-500/10 blur-[100px] rounded-full pointer-events-none"></div>
+            </div>
 
             <div className="max-w-4xl mx-auto relative z-10 space-y-6">
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/5 dark:bg-indigo-500/10 border border-indigo-500/10 dark:border-indigo-400/20 rounded-full text-xs font-semibold text-indigo-650 dark:text-indigo-300">
@@ -322,7 +324,7 @@ Sitemap: https://tool-hub-app.vercel.app/sitemap.xml`;
               </p>
 
               {/* Dynamic search input inside hero with modern Autocomplete Dropdown */}
-              <div className="max-w-xl mx-auto relative mt-10">
+              <div className="max-w-xl mx-auto relative mt-10 z-30">
                 <div className="relative">
                   <input
                     type="text"
@@ -361,7 +363,7 @@ Sitemap: https://tool-hub-app.vercel.app/sitemap.xml`;
                     placeholder="Search 20+ direct browser-safe tools (e.g., 'EMI', 'Base64', 'QR Code')..."
                     className="w-full bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white rounded-2xl pl-12 pr-4 py-4.5 border border-zinc-200 dark:border-zinc-800 shadow-xl focus:outline-none focus:ring-4 focus:ring-indigo-500/15 placeholder-zinc-400 dark:placeholder-zinc-500 font-semibold text-sm transition-all"
                   />
-                  <Search className="w-5 h-5 text-indigo-500 absolute left-4.5 top-5" />
+                  <Search className="w-5 h-5 text-indigo-500 absolute left-4.5 top-1/2 -translate-y-1/2" />
                 </div>
 
                 {/* Autocomplete Dropdown list results */}
