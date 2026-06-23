@@ -1,0 +1,34 @@
+# Enterprise Security Configuration Suite
+# Hardens directories, prevents direct file access, and secures browser MIME transactions
+
+# 1. Disable Directory Indexes / Prevent File Browsing
+Options -Indexes
+
+# 2. Block direct access to critical environmental & configuration files
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+<FilesMatch "\.(db|sqlite|env|json|config|yml|yaml|log|sh|sql|ts|tsx)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# 3. Prevent XSS & Clickjacking Attacks (Browser Hardening Headers)
+<IfModule mod_headers.c>
+    # Prevent browsers from MIME-sniffing the response
+    Header set X-Content-Type-Options "nosniff"
+    
+    # Enable XSS Filter protection in older browsers
+    Header set X-XSS-Protection "1; mode=block"
+    
+    # Frame options protection against Clickjacking
+    Header set X-Frame-Options "SAMEORIGIN"
+    
+    # Require strictly encrypted connections
+    Header set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    
+    # Control sensitive credentials transfer referrer channels
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>

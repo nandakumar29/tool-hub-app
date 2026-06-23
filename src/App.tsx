@@ -13,6 +13,7 @@ import FinanceTools from './components/FinanceTools';
 import DeveloperTools from './components/DeveloperTools';
 import UtilityTools from './components/UtilityTools';
 import ImageTools from './components/ImageTools';
+import AdminDashboard from './components/AdminDashboard';
 
 import {
   ArrowRight,
@@ -127,6 +128,63 @@ export default function App() {
     setOpenTips(false);
   }, [activeView]);
 
+  // Analytics Session Tracker Mount
+  useEffect(() => {
+    let sessionToken = localStorage.getItem('toolhub_session_token');
+    if (!sessionToken) {
+      sessionToken = 'sess_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
+      localStorage.setItem('toolhub_session_token', sessionToken);
+    }
+
+    const ua = navigator.userAgent;
+    let platform = 'Other';
+    if (/Windows/i.test(ua)) platform = 'Windows';
+    else if (/Macintosh/i.test(ua)) platform = 'macOS';
+    else if (/Linux/i.test(ua)) platform = 'Linux';
+    else if (/iPhone|iPad|iPod/i.test(ua)) platform = 'iOS';
+    else if (/Android/i.test(ua)) platform = 'Android';
+
+    fetch('/api/sessions/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionToken,
+        userAgent: ua,
+        platform,
+        referrer: document.referrer || 'Direct'
+      })
+    }).catch(err => console.error('Error logging session:', err));
+  }, []);
+
+  // Track page-views & tool clicks as actions in SQLite
+  useEffect(() => {
+    const sessionToken = localStorage.getItem('toolhub_session_token');
+    if (!sessionToken) return;
+
+    let actionType = 'navigate';
+    let details = activeView;
+
+    if (activeView.startsWith('tools/')) {
+      actionType = 'tool_use';
+      details = activeView.substring(6);
+    } else if (activeView === 'home' || activeView === 'blog' || activeView === 'privacy-policy' || activeView === 'terms' || activeView === 'about' || activeView === 'contact' || activeView === 'admin-private-portal' || activeView === 'sitemap' || activeView === 'robots') {
+      actionType = 'navigate';
+      details = activeView;
+    } else {
+      return; // Do not log arbitrary state transitions
+    }
+
+    fetch('/api/sessions/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionToken,
+        actionType,
+        details
+      })
+    }).catch(err => console.error('Error logging action activity:', err));
+  }, [activeView]);
+
   const rateTool = async (toolId: string, rating: number) => {
     try {
       const res = await fetch('/api/ratings', {
@@ -148,6 +206,21 @@ export default function App() {
           localStorage.setItem('toolhub_rated_tools', JSON.stringify(next));
           return next;
         });
+
+        // Log rating action in SQLite logs
+        const sessionToken = localStorage.getItem('toolhub_session_token');
+        if (sessionToken) {
+          fetch('/api/sessions/log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionToken,
+              actionType: 'rate',
+              details: `${toolId}:${rating}`
+            })
+          }).catch(err => console.error('Error logging rating action:', err));
+        }
+
         return true;
       }
     } catch (err) {
@@ -1379,6 +1452,20 @@ Sitemap: https://tool-hub-app.vercel.app/sitemap.xml`;
             </form>
 
           </div>
+        </div>
+      )}
+
+      {/* SECURED ADMIN METRICS PORTAL */}
+      {activeView === 'admin-private-portal' && (
+        <div id="admin-analytics-container">
+          <SEO
+            title="Secure Admin Portal"
+            description="System management console to audit database execution parameters and tracking telemetry metrics."
+            canonicalUrl="https://tool-hub-app.vercel.app/#/admin-private-portal"
+            breadcrumbs={[{ name: 'Admin Dashboard' }]}
+            onNavigate={navigateTo}
+          />
+          <AdminDashboard onNavigate={navigateTo} />
         </div>
       )}
 
