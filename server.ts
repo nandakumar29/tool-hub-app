@@ -84,105 +84,45 @@ db.exec(`
   )
 `);
 
-// Seed realistic initial ratings for all existing tools
-const checkStmt = db.prepare('SELECT COUNT(*) as count FROM tool_ratings WHERE tool_id = ?');
-const insertStmt = db.prepare('INSERT INTO tool_ratings (tool_id, rating_sum, rating_count) VALUES (?, ?, ?)');
-
-db.transaction(() => {
-  for (const tool of TOOLS) {
-    const row = checkStmt.get(tool.id) as { count: number };
-    if (row && row.count === 0) {
-      // Seed a lively active rating space
-      // Number of reviews: 15 to 140
-      const count = Math.floor(Math.random() * 125) + 15;
-      // Average stars: 4.3 to 4.9
-      const ratingAvg = 4.3 + Math.random() * 0.6;
-      const sum = parseFloat((count * ratingAvg).toFixed(1));
-      insertStmt.run(tool.id, sum, count);
-    }
-  }
-})();
-
-// Seed session and activity log telemetry for analytics dashboard if empty
-const countSessions = db.prepare('SELECT COUNT(*) as count FROM usage_sessions').get() as { count: number };
-if (countSessions && countSessions.count === 0) {
-  const seedSessionsStmt = db.prepare(`
-    INSERT INTO usage_sessions (session_token, user_agent, platform, referrer, created_at)
-    VALUES (?, ?, ?, ?, datetime('now', ?, ?, ?))
-  `);
-  
-  const seedActivitiesStmt = db.prepare(`
-    INSERT INTO activity_logs (session_token, action_type, details, created_at)
-    VALUES (?, ?, ?, datetime('now', ?, ?, ?))
-  `);
-
-  const platforms = ['macOS', 'Windows', 'Android', 'iOS', 'Linux'];
-  const referrers = ['Direct', 'https://google.com', 'https://github.com', 'https://twitter.com', 'https://dev.to', 'https://linkedin.com'];
-  const sampleTools = [
-    'emi-calculator', 'sip-calculator', 'fd-calculator', 'gst-calculator',
-    'json-formatter', 'base64-encode-decode', 'jwt-decoder', 'sha256-generator',
-    'json-to-model', 'code-compiler-converter', 'password-generator',
-    'qr-generator', 'word-counter', 'image-compressor', 'image-resizer'
-  ];
-
+// Prune all pre-seeded dummy telemetry and ratings, then preserve only genuine user sessions
+try {
   db.transaction(() => {
-    // Seed records distributed over the last 7 days (day -6 to day 0)
-    for (let day = -6; day <= 0; day++) {
-      // 15 to 35 sessions per day
-      const numSessions = Math.floor(Math.random() * 20) + 15;
-      for (let s = 0; s < numSessions; s++) {
-        const randToken = 'sess_seed_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now() + '_' + day + '_' + s;
-        const platform = platforms[Math.floor(Math.random() * platforms.length)];
-        
-        const randRef = Math.random();
-        let referrer = 'Direct';
-        if (randRef >= 0.4 && randRef < 0.7) {
-          referrer = 'https://google.com';
-        } else if (randRef >= 0.7) {
-          referrer = referrers[Math.floor(Math.random() * referrers.length)];
-        }
-
-        const userAgent = `Mozilla/5.0 (${
-          platform === 'Windows' ? 'Windows NT 10.0; Win64; x64' :
-          platform === 'macOS' ? 'Macintosh; Intel Mac OS X 10_15_7' :
-          platform === 'Android' ? 'Linux; Android 13' :
-          platform === 'iOS' ? 'iPhone; CPU iPhone OS 16_5 like Mac OS X' :
-          'X11; Linux x86_64'
-        }) AppleWebKit/537.36`;
-        
-        const hour = Math.floor(Math.random() * 23);
-        const min = Math.floor(Math.random() * 59);
-
-        const mod1 = `${day} days`;
-        const mod2 = `+${hour} hours`;
-        const mod3 = `+${min} minutes`;
-        
-        seedSessionsStmt.run(randToken, userAgent, platform, referrer, mod1, mod2, mod3);
-
-        // Record page entry navigation event
-        seedActivitiesStmt.run(randToken, 'navigate', 'home', mod1, mod2, mod3);
-
-        // Record 1 to 3 tool opening sessions
-        const numToolsUsed = Math.floor(Math.random() * 3) + 1;
-        for (let t = 0; t < numToolsUsed; t++) {
-          const randTool = sampleTools[Math.floor(Math.random() * sampleTools.length)];
-          const tHour = (hour + t + 1) % 24;
-          const tMin = Math.floor(Math.random() * 59);
-          const tMod1 = `${day} days`;
-          const tMod2 = `+${tHour} hours`;
-          const tMod3 = `+${tMin} minutes`;
-          
-          seedActivitiesStmt.run(randToken, 'tool_use', randTool, tMod1, tMod2, tMod3);
-
-          // 25% chance of submitting a review/rating
-          if (Math.random() > 0.75) {
-            const seedRating = Math.floor(Math.random() * 2) + 4; // stars 4 or 5
-            seedActivitiesStmt.run(randToken, 'rate', `${randTool}:${seedRating}`, tMod1, tMod2, tMod3);
-          }
+    // Delete all seeded sessions and activities
+    db.prepare("DELETE FROM usage_sessions WHERE session_token LIKE 'sess_seed_%'").run();
+    db.prepare("DELETE FROM activity_logs WHERE session_token LIKE 'sess_seed_%'").run();
+    
+    // Reset tool_ratings table entirely to remove seeded random values
+    db.prepare("DELETE FROM tool_ratings").run();
+    
+    // Re-calculate rating_sum and rating_count dynamically based on genuine user 'rate' events in activity_logs
+    const realRatings = db.prepare(`
+      SELECT details 
+      FROM activity_logs 
+      WHERE action_type = 'rate' AND session_token NOT LIKE 'sess_seed_%'
+    `).all() as { details: string }[];
+    
+    const insertRating = db.prepare(`
+      INSERT INTO tool_ratings (tool_id, rating_sum, rating_count)
+      VALUES (?, ?, 1)
+      ON CONFLICT(tool_id) DO UPDATE SET
+        rating_sum = rating_sum + EXCLUDED.rating_sum,
+        rating_count = rating_count + 1
+    `);
+    
+    for (const row of realRatings) {
+      if (row.details && row.details.includes(':')) {
+        const parts = row.details.split(':');
+        const toolId = parts[0];
+        const rating = parseInt(parts[1], 10);
+        if (toolId && !isNaN(rating) && rating >= 1 && rating <= 5) {
+          insertRating.run(toolId, rating);
         }
       }
     }
   })();
+  console.log('🛡️ SQLite Pruning Complete: Cleaned all synthetic dataset and preserved genuine logs.');
+} catch (err) {
+  console.error('Failed to clean mock records:', err);
 }
 
 // API Endpoints for Ratings
