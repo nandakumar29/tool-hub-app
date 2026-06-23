@@ -45,7 +45,13 @@ app.use((req, res, next) => {
 });
 
 // Initialize SQLite Database
-const db = new Database('ratings.db');
+let db: Database.Database;
+try {
+  db = new Database('ratings.db');
+} catch (e) {
+  const fallbackPath = path.join('/tmp', 'ratings.db');
+  db = new Database(fallbackPath);
+}
 
 // Create ratings, sessions, and activity log tables
 db.exec(`
@@ -420,3 +426,5 @@ async function startServer() {
 startServer().catch(err => {
   console.error('Failed to start full-stack server:', err);
 });
+
+export default app;

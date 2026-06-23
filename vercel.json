@@ -2,6 +2,19 @@
   "version": 2,
   "cleanUrls": true,
   "trailingSlash": false,
+  "builds": [
+    {
+      "src": "server.ts",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
   "routes": [
     {
       "src": "/ads.txt",
@@ -17,6 +30,10 @@
         "cache-control": "public, max-age=31536000, immutable"
       },
       "continue": true
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "server.ts"
     },
     {
       "src": "/(.*)",
