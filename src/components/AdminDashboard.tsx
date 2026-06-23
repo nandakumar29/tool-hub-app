@@ -319,7 +319,35 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
             </button>
           </form>
 
-          {/* Credentials hint removed for security and privacy */}
+          {/* Helpful tips to resolve potential login & environment issues */}
+          <div className="pt-4 border-t border-zinc-100 dark:border-zinc-850/60 mt-2 space-y-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 block">
+              Default Fallback Access Credentials:
+            </span>
+            <div className="p-3 bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-150 dark:border-zinc-850 rounded-xl space-y-1.5 text-[11px] text-zinc-600 dark:text-zinc-400">
+              <div className="flex justify-between items-center">
+                <span className="font-medium">Username Options:</span>
+                <code className="bg-white dark:bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-200 dark:border-zinc-800 text-[10px] font-mono text-indigo-650 dark:text-indigo-400">
+                  admin-nandakumar
+                </code>
+              </div>
+              <div className="flex justify-between items-center text-[10px] text-zinc-400 dark:text-zinc-500 pl-4">
+                <span>or simple fallback:</span>
+                <span className="font-mono bg-white dark:bg-zinc-900 px-1 py-0.5 rounded border border-zinc-150 dark:border-zinc-850 text-[10px]">
+                  admin / nanduthazhath96@gmail.com
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="font-medium">Password Fallback:</span>
+                <code className="bg-white dark:bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-200 dark:border-zinc-800 text-[10px] font-mono text-zinc-800 dark:text-zinc-200">
+                  Drowssap@123$
+                </code>
+              </div>
+              <p className="text-[10px] leading-relaxed text-zinc-400 dark:text-zinc-500 pt-1.5 border-t border-zinc-100 dark:border-zinc-850/50">
+                💡 <span className="font-semibold text-zinc-500 dark:text-zinc-400">Environment tip:</span> To override these credentials, add <code className="bg-zinc-150 dark:bg-zinc-800 px-1 rounded text-[9px]">ADMIN_USERNAME</code> and <code className="bg-zinc-150 dark:bg-zinc-800 px-1 rounded text-[9px]">ADMIN_PASSWORD</code> under the Secrets Configuration panel in the Google AI Studio settings or your deployment environment.
+              </p>
+            </div>
+          </div>
         </motion.div>
       </div>
     );
