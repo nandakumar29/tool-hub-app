@@ -1,0 +1,6 @@
+{
+  "name": "ToolHub",
+  "description": "Free online developer, financial, utility and image editing tools. Fast, secure, and optimized for SEO and Google AdSense.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
