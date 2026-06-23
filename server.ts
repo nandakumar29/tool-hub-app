@@ -4,6 +4,7 @@ import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import Database from 'better-sqlite3';
 import { TOOLS } from './src/data/tools';
+import { BLOG_ARTICLES } from './src/data/blogs';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -400,6 +401,40 @@ app.get('/ads.txt', (req, res) => {
 
   // Double robust direct payload response fallback as final safeguard
   res.send('google.com, pub-5240099836324801, DIRECT, f08c47fec0942fa0');
+});
+
+// Explicit dynamic Sitemap generator matching all tools and blog articles
+app.get('/sitemap.xml', (req, res) => {
+  res.header('Content-Type', 'application/xml; charset=utf-8');
+  const rootUrl = "https://tool-hub-app.vercel.app";
+  let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
+  
+  // Core pages
+  xml += `  <url>\n    <loc>${rootUrl}</loc>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n`;
+  
+  // Tools list
+  TOOLS.forEach(t => {
+    xml += `  <url>\n    <loc>${rootUrl}/#/tools/${t.id}</loc>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n`;
+  });
+
+  // Blogs list
+  BLOG_ARTICLES.forEach(a => {
+    xml += `  <url>\n    <loc>${rootUrl}/#/blog/${a.slug}</loc>\n    <changefreq>monthly</changefreq>\n    <priority>0.6</priority>\n  </url>\n`;
+  });
+
+  xml += `</urlset>`;
+  res.send(xml);
+});
+
+// Explicit robots.txt endpoint matching crawl directives
+app.get('/robots.txt', (req, res) => {
+  res.header('Content-Type', 'text/plain; charset=utf-8');
+  res.send(`# ToolHub Sitemap & Crawling Directives (all in one click)
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: https://tool-hub-app.vercel.app/sitemap.xml`);
 });
 
 // Setup Vite Dev Server / Static Assets Production Mode

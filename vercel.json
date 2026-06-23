@@ -32,6 +32,14 @@
       "continue": true
     },
     {
+      "src": "/sitemap.xml",
+      "dest": "server.ts"
+    },
+    {
+      "src": "/robots.txt",
+      "dest": "server.ts"
+    },
+    {
       "src": "/api/(.*)",
       "dest": "server.ts"
     },
