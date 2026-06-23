@@ -631,9 +631,13 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server is running at http://localhost:${PORT}`);
-  });
+  if (!process.env.VERCEL) {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server is running at http://localhost:${PORT}`);
+    });
+  } else {
+    console.log('🚀 Running in Vercel Serverless environment: skipped app.listen configuration.');
+  }
 }
 
 startServer().catch(err => {
