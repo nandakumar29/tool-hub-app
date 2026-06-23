@@ -2,12 +2,252 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
-import Database from 'better-sqlite3';
 import { TOOLS } from './src/data/tools';
 import { BLOG_ARTICLES } from './src/data/blogs';
 import dotenv from 'dotenv';
 
 dotenv.config();
+
+// Define a pure JS file-persisted JSON database adapter to guarantee node-compatibility on serverless host systems (e.g., Vercel)
+class PureJS_JSON_DB {
+  private filepath: string;
+  private data: {
+    tool_ratings: Array<{ tool_id: string; rating_sum: number; rating_count: number }>;
+    usage_sessions: Array<{
+      id: number;
+      session_token: string;
+      user_agent: string | null;
+      platform: string | null;
+      referrer: string | null;
+      created_at: string;
+    }>;
+    activity_logs: Array<{
+      id: number;
+      session_token: string;
+      action_type: string;
+      details: string | null;
+      created_at: string;
+    }>;
+  };
+
+  constructor(filepath: string) {
+    this.filepath = filepath;
+    this.data = {
+      tool_ratings: [],
+      usage_sessions: [],
+      activity_logs: []
+    };
+    this.load();
+  }
+
+  private load() {
+    try {
+      if (fs.existsSync(this.filepath)) {
+        const raw = fs.readFileSync(this.filepath, 'utf8');
+        const parsed = JSON.parse(raw);
+        this.data = {
+          tool_ratings: parsed.tool_ratings || [],
+          usage_sessions: parsed.usage_sessions || [],
+          activity_logs: parsed.activity_logs || []
+        };
+      } else {
+        this.save();
+      }
+    } catch (e) {
+      console.error("Failed to load database file, using in-memory fallbacks", e);
+    }
+  }
+
+  private save() {
+    try {
+      const dir = path.dirname(this.filepath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(this.filepath, JSON.stringify(this.data, null, 2), 'utf8');
+    } catch (e) {
+      console.error("Failed to save database file", e);
+    }
+  }
+
+  exec(sql: string) {
+    return this;
+  }
+
+  transaction(fn: (...args: any[]) => any) {
+    const self = this;
+    return function(...args: any[]) {
+      const res = fn(...args);
+      self.save();
+      return res;
+    };
+  }
+
+  prepare(sql: string) {
+    const trimmed = sql.trim().replace(/\s+/g, ' ');
+    const self = this;
+
+    return {
+      run(...args: any[]) {
+        let affected = 0;
+
+        if (trimmed.includes("DELETE FROM usage_sessions WHERE session_token LIKE")) {
+          const originalLen = self.data.usage_sessions.length;
+          self.data.usage_sessions = self.data.usage_sessions.filter(s => !s.session_token.startsWith('sess_seed_'));
+          affected = originalLen - self.data.usage_sessions.length;
+        } else if (trimmed.includes("DELETE FROM activity_logs WHERE session_token LIKE")) {
+          const originalLen = self.data.activity_logs.length;
+          self.data.activity_logs = self.data.activity_logs.filter(l => !l.session_token.startsWith('sess_seed_'));
+          affected = originalLen - self.data.activity_logs.length;
+        } else if (trimmed.includes("DELETE FROM tool_ratings")) {
+          affected = self.data.tool_ratings.length;
+          self.data.tool_ratings = [];
+        } else if (trimmed.startsWith("INSERT INTO tool_ratings") && trimmed.includes("ON CONFLICT(tool_id) DO UPDATE SET")) {
+          const toolId = args[0];
+          const ratingSum = args[1];
+          const found = self.data.tool_ratings.find(r => r.tool_id === toolId);
+          if (found) {
+            found.rating_sum += ratingSum;
+            found.rating_count += 1;
+          } else {
+            self.data.tool_ratings.push({ tool_id: toolId, rating_sum: ratingSum, rating_count: 1 });
+          }
+          affected = 1;
+        } else if (trimmed.startsWith("INSERT OR IGNORE INTO usage_sessions")) {
+          const session_token = args[0];
+          const user_agent = args[1] || null;
+          const platform = args[2] || null;
+          const referrer = args[3] || null;
+          const exists = self.data.usage_sessions.some(s => s.session_token === session_token);
+          if (!exists) {
+            const nextId = self.data.usage_sessions.reduce((max, s) => s.id > max ? s.id : max, 0) + 1;
+            self.data.usage_sessions.push({
+              id: nextId,
+              session_token,
+              user_agent,
+              platform,
+              referrer,
+              created_at: new Date().toISOString()
+            });
+            affected = 1;
+          }
+        } else if (trimmed.startsWith("INSERT INTO activity_logs")) {
+          const session_token = args[0];
+          const action_type = args[1];
+          const details = args[2] || null;
+          const nextId = self.data.activity_logs.reduce((max, l) => l.id > max ? l.id : max, 0) + 1;
+          self.data.activity_logs.push({
+            id: nextId,
+            session_token,
+            action_type,
+            details,
+            created_at: new Date().toISOString()
+          });
+          affected = 1;
+        }
+
+        self.save();
+        return { changes: affected, lastInsertRowid: 0 };
+      },
+
+      get(...args: any[]): any {
+        if (trimmed.includes("SELECT COUNT(*) as count FROM usage_sessions")) {
+          return { count: self.data.usage_sessions.length };
+        } else if (trimmed.includes("SELECT COUNT(*) as count FROM activity_logs")) {
+          return { count: self.data.activity_logs.length };
+        } else if (trimmed.includes("SELECT rating_sum, rating_count FROM tool_ratings WHERE tool_id = ?")) {
+          const toolId = args[0];
+          const r = self.data.tool_ratings.find(x => x.tool_id === toolId);
+          return r ? { rating_sum: r.rating_sum, rating_count: r.rating_count } : undefined;
+        }
+        return undefined;
+      },
+
+      all(...args: any[]): any[] {
+        if (trimmed.includes("SELECT details FROM activity_logs WHERE action_type = 'rate' AND session_token NOT LIKE 'sess_seed_%'")) {
+          return self.data.activity_logs
+            .filter(l => l.action_type === 'rate' && !l.session_token.startsWith('sess_seed_'))
+            .map(l => ({ details: l.details || '' }));
+        } else if (trimmed.includes("SELECT tool_id, rating_sum, rating_count FROM tool_ratings")) {
+          return self.data.tool_ratings.map(r => ({
+            tool_id: r.tool_id,
+            rating_sum: r.rating_sum,
+            rating_count: r.rating_count
+          }));
+        } else if (trimmed.includes("FROM usage_sessions GROUP BY platform")) {
+          const counts: Record<string, number> = {};
+          self.data.usage_sessions.forEach(s => {
+            const p = s.platform || 'Unknown';
+            counts[p] = (counts[p] || 0) + 1;
+          });
+          return Object.entries(counts)
+            .map(([platform, count]) => ({ platform, count }))
+            .sort((a, b) => b.count - a.count);
+        } else if (trimmed.includes("FROM usage_sessions GROUP BY referrer")) {
+          const counts: Record<string, number> = {};
+          self.data.usage_sessions.forEach(s => {
+            const r = s.referrer || 'Direct';
+            counts[r] = (counts[r] || 0) + 1;
+          });
+          return Object.entries(counts)
+            .map(([referrer, count]) => ({ referrer, count }))
+            .sort((a, b) => b.count - a.count);
+        } else if (trimmed.includes("FROM activity_logs WHERE action_type = 'tool_use' GROUP BY details")) {
+          const counts: Record<string, number> = {};
+          self.data.activity_logs
+            .filter(l => l.action_type === 'tool_use')
+            .forEach(l => {
+              const tid = l.details || 'unknown';
+              counts[tid] = (counts[tid] || 0) + 1;
+            });
+          return Object.entries(counts)
+            .map(([tool_id, count]) => ({ tool_id, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 10);
+        } else if (trimmed.includes("COUNT(DISTINCT session_token) as active_users")) {
+          const days: Record<string, { active_users_set: Set<string>; total_actions: number }> = {};
+          self.data.activity_logs.forEach(l => {
+            const day_date = (l.created_at || '').substring(0, 10) || new Date().toISOString().substring(0, 10);
+            if (!days[day_date]) {
+              days[day_date] = { active_users_set: new Set(), total_actions: 0 };
+            }
+            days[day_date].active_users_set.add(l.session_token);
+            days[day_date].total_actions += 1;
+          });
+          return Object.entries(days)
+            .map(([day_date, info]) => ({
+              day_date,
+              active_users: info.active_users_set.size,
+              total_actions: info.total_actions
+            }))
+            .sort((a, b) => a.day_date.localeCompare(b.day_date))
+            .slice(0, 14);
+        } else if (trimmed.includes("LEFT JOIN usage_sessions s ON l.session_token = s.session_token")) {
+          const sessMap = new Map<string, typeof self.data.usage_sessions[0]>();
+          self.data.usage_sessions.forEach(s => {
+            sessMap.set(s.session_token, s);
+          });
+          return self.data.activity_logs
+            .map(l => {
+              const s = sessMap.get(l.session_token);
+              return {
+                id: l.id,
+                session_token: l.session_token,
+                action_type: l.action_type,
+                details: l.details,
+                created_at: l.created_at,
+                platform: s ? s.platform : null,
+                referrer: s ? s.referrer : null
+              };
+            })
+            .sort((a, b) => b.created_at.localeCompare(a.created_at))
+            .slice(0, 30);
+        }
+        return [];
+      }
+    };
+  }
+}
 
 const app = express();
 const PORT = 3000;
@@ -45,14 +285,12 @@ app.use((req, res, next) => {
   next();
 });
 
-// Initialize SQLite Database
-let db: Database.Database;
-try {
-  db = new Database('ratings.db');
-} catch (e) {
-  const fallbackPath = path.join('/tmp', 'ratings.db');
-  db = new Database(fallbackPath);
+// Initialize robust pure-JS file-persisted JSON database
+let dbPath = path.join(process.cwd(), 'ratings_db.json');
+if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+  dbPath = path.join('/tmp', 'ratings_db.json');
 }
+const db = new PureJS_JSON_DB(dbPath);
 
 // Create ratings, sessions, and activity log tables
 db.exec(`
