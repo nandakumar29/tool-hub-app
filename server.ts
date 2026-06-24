@@ -461,8 +461,18 @@ app.post('/api/sessions/log', (req, res) => {
 });
 
 // Admin Authentication Setup
-const ADMIN_USER = (process.env.ADMIN_USERNAME || 'admin-nandakumar').trim();
-const ADMIN_PASS = (process.env.ADMIN_PASSWORD || 'Drowssap@123$').trim();
+const cleanEnvVar = (val: string | undefined, defaultVal: string): string => {
+  if (!val) return defaultVal;
+  let str = val.trim();
+  // Strip outer quotes if present
+  if ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
+    str = str.slice(1, -1);
+  }
+  return str.trim();
+};
+
+const ADMIN_USER = cleanEnvVar(process.env.ADMIN_USERNAME, 'admin-nandakumar');
+const ADMIN_PASS = cleanEnvVar(process.env.ADMIN_PASSWORD, 'Drowssap@123$');
 const ADMIN_TOKEN = 'admin-secure-token-9566966001308351';
 
 app.post('/api/admin/login', (req, res) => {
@@ -481,6 +491,8 @@ app.post('/api/admin/login', (req, res) => {
   const passMatches = 
     passClean === ADMIN_PASS || 
     passClean === 'Drowssap@123$';
+
+  console.log(`[Admin Login] User input: "${userClean}". Target: "${ADMIN_USER}". Matched User: ${userMatches}. Matched Pass: ${passMatches}`);
 
   if (userMatches && passMatches) {
     return res.json({ success: true, token: ADMIN_TOKEN });
