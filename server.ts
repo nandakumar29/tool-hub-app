@@ -1,7 +1,6 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import { createServer as createViteServer } from 'vite';
 import { TOOLS } from './src/data/tools';
 import { BLOG_ARTICLES } from './src/data/blogs';
 import dotenv from 'dotenv';
@@ -649,6 +648,7 @@ Sitemap: https://tool-hub-app.vercel.app/sitemap.xml`);
 // Setup Vite Dev Server / Static Assets Production Mode
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
