@@ -24,9 +24,15 @@ import {
   Tv,
   ExternalLink,
   Eye,
-  EyeOff
+  EyeOff,
+  GitCompare,
+  Award,
+  Sparkles,
+  Filter,
+  CheckCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { TOOLS, CATEGORIES } from '../data/tools';
 
 interface AdminDashboardProps {
   onNavigate: (view: string) => void;
@@ -52,6 +58,12 @@ interface ToolUsageStat {
   count: number;
 }
 
+interface ToolRatingStat {
+  tool_id: string;
+  rating_sum: number;
+  rating_count: number;
+}
+
 interface DailyStat {
   day_date: string;
   active_users: number;
@@ -73,6 +85,7 @@ interface AnalyticsData {
   platforms: PlatformStat[];
   referrers: ReferrerStat[];
   toolUsage: ToolUsageStat[];
+  toolRatings: ToolRatingStat[];
   dailyStats: DailyStat[];
   recentLogs: ActivityLog[];
 }
@@ -102,6 +115,13 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [actionFilter, setActionFilter] = useState<string>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Tools Tab Advanced Sorting, Searching, Filtering & Comparison States
+  const [toolSearch, setToolSearch] = useState('');
+  const [toolSortBy, setToolSortBy] = useState<'score' | 'hits' | 'rating' | 'name'>('score');
+  const [toolCategoryFilter, setToolCategoryFilter] = useState<string>('all');
+  const [compareToolA, setCompareToolA] = useState<string>('');
+  const [compareToolB, setCompareToolB] = useState<string>('');
 
   // Fetch Analytics logic
   const fetchAnalytics = async (authToken: string) => {
@@ -194,6 +214,14 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
       fetchAnalytics(token);
     }
   }, [token]);
+
+  // Auto-initialize comparison tools when analytics data is loaded
+  useEffect(() => {
+    if (analyticsData && TOOLS.length >= 2) {
+      if (!compareToolA) setCompareToolA(TOOLS[0].id);
+      if (!compareToolB) setCompareToolB(TOOLS[1].id);
+    }
+  }, [analyticsData]);
 
   // Handle manual trigger refresh
   const triggerRefresh = async () => {
@@ -669,74 +697,434 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
               </motion.div>
             )}
 
-            {/* TAB 2: TOOL UTILIZATION HIGHLIGHTS */}
-            {activeTab === 'tools' && (
-              <motion.div
-                key="tab-tools"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-850 p-6 rounded-3xl shadow-xs space-y-4"
-              >
-                <div>
-                  <h4 className="text-sm font-bold text-zinc-900 dark:text-white">Most Demanded Computational Utilities</h4>
-                  <p className="text-[10px] text-zinc-500 font-medium">Aggregated execution rankings compiled via background audit streams.</p>
-                </div>
+            {/* TAB 2: TOOL UTILIZATION HIGHLIGHTS & COMPARATIVE ANALYTICS */}
+            {activeTab === 'tools' && (() => {
+              // Pre-compile analytical metrics for all system tools based on SQLite records
+              const compiledTools = TOOLS.map(tool => {
+                const usage = analyticsData.toolUsage.find(u => u.tool_id === tool.id);
+                const rating = analyticsData.toolRatings?.find(r => r.tool_id === tool.id);
+                
+                const hits = usage ? usage.count : 0;
+                const rSum = rating ? rating.rating_sum : 0;
+                const rCount = rating ? rating.rating_count : 0;
+                const avgRating = rCount > 0 ? parseFloat((rSum / rCount).toFixed(1)) : 0;
+                
+                // Smart Performance Score: combines popularity, review volume, and positive sentiment
+                const score = parseFloat(((hits * 0.4) + (avgRating * 1.5) + (rCount * 0.6)).toFixed(1));
+                
+                return {
+                  ...tool,
+                  hits,
+                  ratingCount: rCount,
+                  averageRating: avgRating,
+                  score
+                };
+              });
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2 select-none">
-                  {analyticsData.toolUsage.map((tool, idx) => {
-                    const maxToolCount = Math.max(...analyticsData.toolUsage.map(t => t.count), 1);
-                    const percentOfMax = Math.round((tool.count / maxToolCount) * 100);
-                    
-                    return (
-                      <div 
-                        key={tool.tool_id} 
-                        className="p-4 border border-zinc-100 dark:border-zinc-850 rounded-2xl flex flex-col justify-between hover:border-indigo-200 dark:hover:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/20 hover:bg-white dark:hover:bg-zinc-950/50 transition duration-150 relative overflow-hidden"
-                      >
-                        {/* Soft overlay Rank badge */}
-                        <div className="absolute top-2 right-3 text-2xl font-black text-indigo-500/5 select-none font-mono">
-                          #{idx + 1}
-                        </div>
+              // Extract top performers for top analytical highlight cards
+              const sortedByHits = [...compiledTools].sort((a, b) => b.hits - a.hits);
+              const sortedByRating = [...compiledTools]
+                .filter(t => t.ratingCount > 0)
+                .sort((a, b) => b.averageRating - a.averageRating || b.ratingCount - a.ratingCount);
+              const sortedByScore = [...compiledTools].sort((a, b) => b.score - a.score);
 
-                        <div className="space-y-1.5 z-10">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="font-extrabold text-zinc-800 dark:text-white truncate max-w-[190px]">
-                              {getToolDisplayName(tool.tool_id)}
-                            </span>
-                            <span className="font-mono text-[10px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-md font-extrabold shrink-0">
-                              {tool.count} usages
-                            </span>
-                          </div>
+              const mostVisited = sortedByHits[0]?.hits > 0 ? sortedByHits[0] : null;
+              const highestRated = sortedByRating.length > 0 ? sortedByRating[0] : null;
+              const absoluteChampion = sortedByScore[0]?.score > 0 ? sortedByScore[0] : null;
 
-                          {/* Progress share bar indicator */}
-                          <div className="w-full bg-zinc-100 dark:bg-zinc-800 h-1.5 rounded-full overflow-hidden">
-                            <div className="bg-indigo-650 dark:bg-indigo-500 h-full rounded-full" style={{ width: `${percentOfMax}%` }}></div>
-                          </div>
-                        </div>
+              // Filter & Sort list of tools for the interactive grid
+              const filteredTools = compiledTools
+                .filter(t => {
+                  const matchesSearch = t.name.toLowerCase().includes(toolSearch.toLowerCase()) || 
+                                        t.id.toLowerCase().includes(toolSearch.toLowerCase()) || 
+                                        t.description.toLowerCase().includes(toolSearch.toLowerCase());
+                  const matchesCategory = toolCategoryFilter === 'all' || t.category === toolCategoryFilter;
+                  return matchesSearch && matchesCategory;
+                })
+                .sort((a, b) => {
+                  if (toolSortBy === 'hits') return b.hits - a.hits;
+                  if (toolSortBy === 'rating') return b.averageRating - a.averageRating || b.ratingCount - a.ratingCount;
+                  if (toolSortBy === 'name') return a.name.localeCompare(b.name);
+                  return b.score - a.score; // Default: 'score'
+                });
 
-                        <div className="flex items-center justify-between mt-3 text-[10px] text-zinc-400 font-semibold z-10 border-t border-zinc-100 dark:border-zinc-850/80 pt-2.5">
-                          <span className="flex items-center gap-1 text-slate-500">
-                            Identifier: <code className="font-mono text-zinc-500 dark:text-zinc-450">{tool.tool_id}</code>
-                          </span>
-                          <button
-                            onClick={() => onNavigate(`tools/${tool.tool_id}`)}
-                            className="text-indigo-650 hover:underline inline-flex items-center gap-0.5 cursor-pointer dark:text-indigo-400"
-                          >
-                            Open Utility <ArrowUpRight className="w-3 h-3" />
-                          </button>
-                        </div>
+              // Side-by-side comparison variables
+              const toolA = compiledTools.find(t => t.id === compareToolA);
+              const toolB = compiledTools.find(t => t.id === compareToolB);
+
+              return (
+                <motion.div
+                  key="tab-tools"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="space-y-8"
+                >
+                  {/* A. PERFORMANCE SUMMARY CARDS */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Champion card */}
+                    <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/40 dark:from-indigo-950/20 dark:to-zinc-900 border border-indigo-200/50 dark:border-indigo-500/20 p-5 rounded-2xl shadow-xs space-y-3 relative overflow-hidden">
+                      <div className="absolute top-2 right-2 text-indigo-400/20 dark:text-indigo-400/10">
+                        <Award className="w-16 h-16 stroke-[1.5]" />
                       </div>
-                    );
-                  })}
-                  
-                  {analyticsData.toolUsage.length === 0 && (
-                    <div className="col-span-2 py-10 text-center text-xs text-zinc-400">
-                      No tool executions recorded inside sqlite DB logs yet. Try usage models first!
+                      <div className="flex items-center gap-2 text-indigo-700 dark:text-indigo-400">
+                        <Sparkles className="w-4 h-4 fill-indigo-500 animate-pulse" />
+                        <span className="text-[10px] font-extrabold uppercase tracking-widest">Undisputed Champion</span>
+                      </div>
+                      <div>
+                        <h5 className="text-sm font-bold text-zinc-900 dark:text-white truncate">
+                          {absoluteChampion ? absoluteChampion.name : 'No rating data yet'}
+                        </h5>
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                          Highest composite performance scoring utility in SQLite indexes.
+                        </p>
+                      </div>
+                      <div className="flex items-baseline gap-2 pt-1">
+                        <span className="text-2xl font-black text-indigo-650 dark:text-indigo-400">
+                          {absoluteChampion ? absoluteChampion.score : '0.0'}
+                        </span>
+                        <span className="text-[10px] text-zinc-400 font-bold font-mono">Index Score</span>
+                      </div>
                     </div>
-                  )}
-                </div>
-              </motion.div>
-            )}
+
+                    {/* Most Visited card */}
+                    <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-850 p-5 rounded-2xl shadow-xs space-y-3 relative overflow-hidden">
+                      <div className="absolute top-2 right-2 text-emerald-500/10">
+                        <MousePointerClick className="w-16 h-16 stroke-[1.5]" />
+                      </div>
+                      <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                        <Activity className="w-4 h-4" />
+                        <span className="text-[10px] font-extrabold uppercase tracking-widest">Most Demanded Tool</span>
+                      </div>
+                      <div>
+                        <h5 className="text-sm font-bold text-zinc-900 dark:text-white truncate">
+                          {mostVisited ? mostVisited.name : 'No usage records'}
+                        </h5>
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                          Most frequently clicked utility by on-site visitors.
+                        </p>
+                      </div>
+                      <div className="flex items-baseline gap-2 pt-1">
+                        <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                          {mostVisited ? mostVisited.hits : '0'}
+                        </span>
+                        <span className="text-[10px] text-zinc-400 font-bold font-mono">telemetry hits</span>
+                      </div>
+                    </div>
+
+                    {/* Highest Rated card */}
+                    <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-850 p-5 rounded-2xl shadow-xs space-y-3 relative overflow-hidden">
+                      <div className="absolute top-2 right-2 text-amber-500/10">
+                        <Star className="w-16 h-16 stroke-[1.5]" />
+                      </div>
+                      <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-500">
+                        <Star className="w-4 h-4 fill-amber-500 stroke-amber-500" />
+                        <span className="text-[10px] font-extrabold uppercase tracking-widest">Highest Rated Tool</span>
+                      </div>
+                      <div>
+                        <h5 className="text-sm font-bold text-zinc-900 dark:text-white truncate">
+                          {highestRated ? highestRated.name : 'No ratings filed'}
+                        </h5>
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                          Eminent user rating average in sqlite database records.
+                        </p>
+                      </div>
+                      <div className="flex items-baseline gap-2 pt-1">
+                        <span className="text-2xl font-black text-amber-600 dark:text-amber-450 flex items-center gap-1">
+                          {highestRated ? highestRated.averageRating : '0.0'}{' '}
+                          <Star className="w-4 h-4 fill-amber-500 stroke-amber-500 inline" />
+                        </span>
+                        <span className="text-[10px] text-zinc-400 font-bold font-mono">
+                          ({highestRated ? highestRated.ratingCount : 0} reviews)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* B. SCORING FORMULA METRIC EXPLAINER */}
+                  <div className="bg-zinc-50 dark:bg-zinc-950/40 border border-zinc-200 dark:border-zinc-850/60 p-4 rounded-2xl flex flex-col sm:flex-row items-center gap-4 justify-between">
+                    <div className="space-y-1 text-center sm:text-left">
+                      <h5 className="text-xs font-bold text-zinc-900 dark:text-white flex items-center justify-center sm:justify-start gap-1.5">
+                        <CheckCircle className="w-3.5 h-3.5 text-indigo-500" />
+                        SQLite Comparative Performance Index ("Which is Better?")
+                      </h5>
+                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                        We compute utility scores dynamically by weight-indexing popularity metrics alongside feedback logs.
+                      </p>
+                    </div>
+                    <div className="px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl font-mono text-[10px] text-zinc-700 dark:text-zinc-300 font-bold whitespace-nowrap shadow-xs">
+                      Score = (Hits × 0.4) + (Rating Avg × 1.5) + (Rating Count × 0.6)
+                    </div>
+                  </div>
+
+                  {/* C. INTERACTIVE COMPARATOR SYSTEM (SIDE-BY-SIDE ANALYZER) */}
+                  <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-850 p-6 rounded-3xl shadow-xs space-y-5">
+                    <div className="flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-850 pb-3">
+                      <GitCompare className="w-4.5 h-4.5 text-indigo-500" />
+                      <div>
+                        <h4 className="text-sm font-bold text-zinc-900 dark:text-white">Dual-Utility Side-by-Side Comparator</h4>
+                        <p className="text-[10px] text-zinc-500">Cross-examine SQLite analytics parameters for any two tools side-by-side.</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-11 gap-6 items-center">
+                      {/* Selection A */}
+                      <div className="lg:col-span-4 space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-450 block">Compare Utility A</label>
+                        <select
+                          value={compareToolA}
+                          onChange={(e) => setCompareToolA(e.target.value)}
+                          className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-250 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-850 dark:text-zinc-100 focus:outline-none"
+                        >
+                          {TOOLS.map(t => (
+                            <option key={t.id} value={t.id}>{t.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* VS Divider */}
+                      <div className="lg:col-span-3 text-center flex flex-col justify-center items-center">
+                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-indigo-50 dark:bg-zinc-950 border border-indigo-100 dark:border-zinc-800 text-xs font-black text-indigo-600 font-mono">VS</span>
+                      </div>
+
+                      {/* Selection B */}
+                      <div className="lg:col-span-4 space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-450 block">Compare Utility B</label>
+                        <select
+                          value={compareToolB}
+                          onChange={(e) => setCompareToolB(e.target.value)}
+                          className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-250 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-850 dark:text-zinc-100 focus:outline-none"
+                        >
+                          {TOOLS.map(t => (
+                            <option key={t.id} value={t.id}>{t.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {toolA && toolB && (
+                      <div className="border border-zinc-150 dark:border-zinc-850 rounded-2xl overflow-hidden mt-2">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="bg-zinc-50 dark:bg-zinc-950 border-b border-zinc-150 dark:border-zinc-850 text-zinc-500 text-[10px] font-bold uppercase tracking-wider">
+                              <th className="py-3 px-4 w-1/3">Metrics</th>
+                              <th className={`py-3 px-4 w-1/3 ${toolA.score >= toolB.score ? 'bg-indigo-500/5 font-extrabold text-indigo-700 dark:text-indigo-400' : ''}`}>
+                                {toolA.name}
+                              </th>
+                              <th className={`py-3 px-4 w-1/3 ${toolB.score >= toolA.score ? 'bg-indigo-500/5 font-extrabold text-indigo-700 dark:text-indigo-400' : ''}`}>
+                                {toolB.name}
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-100 dark:divide-zinc-850/60 font-semibold text-zinc-700 dark:text-zinc-300">
+                            {/* Category Row */}
+                            <tr>
+                              <td className="py-3 px-4 text-zinc-450 font-medium">Category Class</td>
+                              <td className="py-3 px-4 capitalize font-bold">{toolA.category}</td>
+                              <td className="py-3 px-4 capitalize font-bold">{toolB.category}</td>
+                            </tr>
+                            {/* Total Hits Row */}
+                            <tr>
+                              <td className="py-3 px-4 text-zinc-450 font-medium">Total Clicks (Hits)</td>
+                              <td className={`py-3 px-4 font-mono font-bold ${toolA.hits > toolB.hits ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
+                                {toolA.hits} {toolA.hits > toolB.hits && '🏆'}
+                              </td>
+                              <td className={`py-3 px-4 font-mono font-bold ${toolB.hits > toolA.hits ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
+                                {toolB.hits} {toolB.hits > toolA.hits && '🏆'}
+                              </td>
+                            </tr>
+                            {/* Average Rating Row */}
+                            <tr>
+                              <td className="py-3 px-4 text-zinc-450 font-medium">Average Star Rating</td>
+                              <td className={`py-3 px-4 font-bold ${toolA.averageRating > toolB.averageRating ? 'text-amber-600 dark:text-amber-500' : ''}`}>
+                                <span className="flex items-center gap-1">
+                                  {toolA.averageRating} <Star className="w-3.5 h-3.5 fill-amber-500 stroke-amber-500" />
+                                  {toolA.averageRating > toolB.averageRating && '🏆'}
+                                </span>
+                              </td>
+                              <td className={`py-3 px-4 font-bold ${toolB.averageRating > toolA.averageRating ? 'text-amber-600 dark:text-amber-500' : ''}`}>
+                                <span className="flex items-center gap-1">
+                                  {toolB.averageRating} <Star className="w-3.5 h-3.5 fill-amber-500 stroke-amber-500" />
+                                  {toolB.averageRating > toolA.averageRating && '🏆'}
+                                </span>
+                              </td>
+                            </tr>
+                            {/* Rating Count Row */}
+                            <tr>
+                              <td className="py-3 px-4 text-zinc-450 font-medium">Total Reviews Filed</td>
+                              <td className={`py-3 px-4 font-mono font-bold ${toolA.ratingCount > toolB.ratingCount ? 'text-indigo-650 dark:text-indigo-400' : ''}`}>
+                                {toolA.ratingCount} {toolA.ratingCount > toolB.ratingCount && '🏆'}
+                              </td>
+                              <td className={`py-3 px-4 font-mono font-bold ${toolB.ratingCount > toolA.ratingCount ? 'text-indigo-650 dark:text-indigo-400' : ''}`}>
+                                {toolB.ratingCount} {toolB.ratingCount > toolA.ratingCount && '🏆'}
+                              </td>
+                            </tr>
+                            {/* Index Score Row */}
+                            <tr className="bg-indigo-50/10 dark:bg-indigo-950/5">
+                              <td className="py-3.5 px-4 text-indigo-700 dark:text-indigo-400 font-extrabold flex items-center gap-1.5">
+                                <Award className="w-4 h-4" /> Performance Score
+                              </td>
+                              <td className={`py-3.5 px-4 font-mono text-sm font-extrabold ${toolA.score >= toolB.score ? 'text-indigo-750 dark:text-indigo-300' : 'text-zinc-400'}`}>
+                                {toolA.score} {toolA.score >= toolB.score && '👑 Winner'}
+                              </td>
+                              <td className={`py-3.5 px-4 font-mono text-sm font-extrabold ${toolB.score >= toolA.score ? 'text-indigo-750 dark:text-indigo-300' : 'text-zinc-400'}`}>
+                                {toolB.score} {toolB.score >= toolA.score && '👑 Winner'}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* D. SEARCHABLE INDEX LIST OF ALL UTILITIES */}
+                  <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-850 p-6 rounded-3xl shadow-xs space-y-4">
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-zinc-100 dark:border-zinc-850 pb-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-zinc-900 dark:text-white">Unified SQLite Utility Matrix</h4>
+                        <p className="text-[10px] text-zinc-500 font-medium">Complete index of all catalog items combined with runtime database analytics.</p>
+                      </div>
+
+                      {/* Filtering blocks */}
+                      <div className="flex flex-wrap items-center justify-end gap-2 text-xs w-full sm:w-auto">
+                        {/* Search bar */}
+                        <div className="relative flex-grow sm:flex-grow-0">
+                          <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-zinc-400" />
+                          <input
+                            type="text"
+                            placeholder="Filter by keyword..."
+                            value={toolSearch}
+                            onChange={(e) => setToolSearch(e.target.value)}
+                            className="pl-8 pr-3 py-1.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 text-zinc-800 dark:text-zinc-200 w-full sm:w-44"
+                          />
+                        </div>
+
+                        {/* Category filter */}
+                        <select
+                          value={toolCategoryFilter}
+                          onChange={(e) => setToolCategoryFilter(e.target.value)}
+                          className="px-2 py-1.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 rounded-xl text-xs font-bold text-zinc-650 dark:text-zinc-350 focus:outline-none cursor-pointer"
+                        >
+                          <option value="all">All Categories</option>
+                          <option value="finance">Finance</option>
+                          <option value="developer">Developer</option>
+                          <option value="utility">Utility</option>
+                          <option value="image">Image</option>
+                        </select>
+
+                        {/* Sort selector */}
+                        <select
+                          value={toolSortBy}
+                          onChange={(e) => setToolSortBy(e.target.value as any)}
+                          className="px-2 py-1.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-850 rounded-xl text-xs font-bold text-zinc-650 dark:text-zinc-350 focus:outline-none cursor-pointer"
+                        >
+                          <option value="score">Sort by Quality Score</option>
+                          <option value="hits">Sort by Hits / Traffic</option>
+                          <option value="rating">Sort by Average Rating</option>
+                          <option value="name">Sort by Utility Name</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto select-none">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-zinc-150 dark:border-zinc-850 text-zinc-450 text-[10px] font-bold uppercase tracking-wider">
+                            <th className="py-3 px-4">Rank Index</th>
+                            <th className="py-3 px-4">Computational Tool</th>
+                            <th className="py-3 px-4 text-center">Telemetry Hits</th>
+                            <th className="py-3 px-4">SQLite User Rating</th>
+                            <th className="py-3 px-4">Performance Score</th>
+                            <th className="py-3 px-4 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100 dark:divide-zinc-850/60 font-medium text-zinc-750 dark:text-zinc-350">
+                          {filteredTools.map((tool, idx) => {
+                            // Find matching rating rank color
+                            let rankBadge = "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400";
+                            if (idx === 0) rankBadge = "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-450 border border-amber-300/30";
+                            else if (idx === 1) rankBadge = "bg-zinc-200 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-300";
+                            else if (idx === 2) rankBadge = "bg-amber-50/80 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300";
+
+                            // Get score rating classification
+                            let classification = { label: "Emerging", color: "text-zinc-500 bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-850" };
+                            if (tool.score >= 15.0) {
+                              classification = { label: "Excellent Perform", color: "text-indigo-600 bg-indigo-50 dark:text-indigo-400 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-900/50" };
+                            } else if (tool.score >= 5.0) {
+                              classification = { label: "Strong Perform", color: "text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/50" };
+                            } else if (tool.score >= 1.0) {
+                              classification = { label: "Moderate Activity", color: "text-amber-600 bg-amber-50 dark:text-amber-400 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900/50" };
+                            }
+
+                            return (
+                              <tr key={tool.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-950/25 transition duration-100">
+                                <td className="py-3.5 px-4 font-mono font-extrabold">
+                                  <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold ${rankBadge}`}>
+                                    {idx + 1}
+                                  </span>
+                                </td>
+                                <td className="py-3.5 px-4 font-bold">
+                                  <div className="flex flex-col">
+                                    <span className="text-zinc-900 dark:text-white font-extrabold">{tool.name}</span>
+                                    <span className="text-[10px] text-zinc-400 font-mono mt-0.5 font-bold flex items-center gap-1.5 uppercase">
+                                      <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></span>
+                                      {tool.category} class
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="py-3.5 px-4 font-mono font-bold text-center">
+                                  <div className="flex flex-col items-center justify-center">
+                                    <span className="text-zinc-900 dark:text-zinc-100 font-black">{tool.hits}</span>
+                                    <div className="w-16 bg-zinc-100 dark:bg-zinc-800 h-1 rounded-full overflow-hidden mt-1">
+                                      <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${Math.min(100, (tool.hits / Math.max(...filteredTools.map(t => t.hits), 1)) * 100)}%` }}></div>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="py-3.5 px-4">
+                                  <div className="flex flex-col">
+                                    <span className="flex items-center gap-1 text-zinc-900 dark:text-white font-black">
+                                      {tool.averageRating}{' '}
+                                      <Star className="w-3.5 h-3.5 fill-amber-500 stroke-amber-500" />
+                                    </span>
+                                    <span className="text-[9px] text-zinc-400 font-mono mt-0.5">
+                                      ({tool.ratingCount} user ratings filed)
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="py-3.5 px-4">
+                                  <div className="flex flex-col gap-1 items-start">
+                                    <span className="font-mono text-zinc-900 dark:text-white font-black">{tool.score}</span>
+                                    <span className={`px-2 py-0.5 rounded-md text-[8px] font-extrabold border uppercase tracking-wider ${classification.color}`}>
+                                      {classification.label}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="py-3.5 px-4 text-right">
+                                  <button
+                                    onClick={() => onNavigate(`tools/${tool.id}`)}
+                                    className="px-2.5 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 rounded-lg text-[10px] text-zinc-700 dark:text-zinc-300 font-extrabold transition cursor-pointer"
+                                  >
+                                    Inspect Tool
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+
+                          {filteredTools.length === 0 && (
+                            <tr>
+                              <td colSpan={6} className="py-12 text-center text-zinc-450 font-medium">
+                                No matching tools found under active filters. Verify search expression.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })()}
 
             {/* TAB 3: COMPLETE AUDIT LOG FEED */}
             {activeTab === 'logs' && (

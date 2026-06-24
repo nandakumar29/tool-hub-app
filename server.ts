@@ -27,6 +27,11 @@ class PureJS_JSON_DB {
       details: string | null;
       created_at: string;
     }>;
+    admin_users: Array<{
+      username: string;
+      password_hash: string;
+      created_at: string;
+    }>;
   };
 
   constructor(filepath: string) {
@@ -34,7 +39,8 @@ class PureJS_JSON_DB {
     this.data = {
       tool_ratings: [],
       usage_sessions: [],
-      activity_logs: []
+      activity_logs: [],
+      admin_users: []
     };
     this.load();
   }
@@ -47,7 +53,8 @@ class PureJS_JSON_DB {
         this.data = {
           tool_ratings: parsed.tool_ratings || [],
           usage_sessions: parsed.usage_sessions || [],
-          activity_logs: parsed.activity_logs || []
+          activity_logs: parsed.activity_logs || [],
+          admin_users: parsed.admin_users || []
         };
       } else {
         this.save();
@@ -143,6 +150,18 @@ class PureJS_JSON_DB {
             created_at: new Date().toISOString()
           });
           affected = 1;
+        } else if (trimmed.startsWith("INSERT INTO admin_users") || trimmed.startsWith("INSERT OR IGNORE INTO admin_users")) {
+          const username = args[0];
+          const password_hash = args[1];
+          const exists = self.data.admin_users.some(u => u.username.toLowerCase() === (username || '').toLowerCase());
+          if (!exists) {
+            self.data.admin_users.push({
+              username,
+              password_hash,
+              created_at: new Date().toISOString()
+            });
+            affected = 1;
+          }
         }
 
         self.save();
@@ -158,6 +177,10 @@ class PureJS_JSON_DB {
           const toolId = args[0];
           const r = self.data.tool_ratings.find(x => x.tool_id === toolId);
           return r ? { rating_sum: r.rating_sum, rating_count: r.rating_count } : undefined;
+        } else if (trimmed.includes("FROM admin_users WHERE username = ?")) {
+          const searchUser = args[0];
+          const found = self.data.admin_users.find(u => u.username.toLowerCase() === (searchUser || '').toLowerCase());
+          return found ? { username: found.username, password_hash: found.password_hash } : undefined;
         }
         return undefined;
       },
@@ -253,6 +276,21 @@ const PORT = 3000;
 
 app.use(express.json());
 
+// Admin Authentication Setup
+const cleanEnvVar = (val: string | undefined, defaultVal: string): string => {
+  if (!val) return defaultVal;
+  let str = val.trim();
+  // Strip outer quotes if present
+  if ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
+    str = str.slice(1, -1);
+  }
+  return str.trim();
+};
+
+const ADMIN_USER = cleanEnvVar(process.env.ADMIN_USERNAME, 'admin-nandakumar');
+const ADMIN_PASS = cleanEnvVar(process.env.ADMIN_PASSWORD, 'Drowssap@123$');
+const ADMIN_TOKEN = 'admin-secure-token-9566966001308351';
+
 // 🛡️ SECURITY PROTECTION INTERCEPTOR MIDDLEWARE
 // Hardens security headers and strictly forbids direct access to sensitive configs, databases, and source files
 app.use((req, res, next) => {
@@ -320,6 +358,25 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )
 `);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS admin_users (
+    username TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// Seed default admin user if none exists in the SQLite DB
+try {
+  const existingAdmin = db.prepare("SELECT username, password_hash FROM admin_users WHERE username = ?").get(ADMIN_USER);
+  if (!existingAdmin) {
+    db.prepare("INSERT INTO admin_users (username, password_hash) VALUES (?, ?)").run(ADMIN_USER, ADMIN_PASS);
+    console.log(`[Admin SQLite DB] Seeded default admin user: "${ADMIN_USER}"`);
+  }
+} catch (err) {
+  console.error("Failed to seed admin user:", err);
+}
 
 // Prune all pre-seeded dummy telemetry and ratings, then preserve only genuine user sessions
 try {
@@ -459,27 +516,23 @@ app.post('/api/sessions/log', (req, res) => {
   }
 });
 
-// Admin Authentication Setup
-const cleanEnvVar = (val: string | undefined, defaultVal: string): string => {
-  if (!val) return defaultVal;
-  let str = val.trim();
-  // Strip outer quotes if present
-  if ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
-    str = str.slice(1, -1);
-  }
-  return str.trim();
-};
-
-const ADMIN_USER = cleanEnvVar(process.env.ADMIN_USERNAME, 'admin-nandakumar');
-const ADMIN_PASS = cleanEnvVar(process.env.ADMIN_PASSWORD, 'Drowssap@123$');
-const ADMIN_TOKEN = 'admin-secure-token-9566966001308351';
-
 app.post('/api/admin/login', (req, res) => {
   const { username, password } = req.body;
   const userClean = (username || '').trim();
   const passClean = (password || '').trim();
 
-  // Allow multi-fallback usernames/identifiers for resilience on different hosting platforms
+  try {
+    // 1. Attempt SQLite DB authentication
+    const dbUser = db.prepare("SELECT username, password_hash FROM admin_users WHERE username = ?").get(userClean);
+    if (dbUser && dbUser.password_hash === passClean) {
+      console.log(`[Admin Login] Authenticated via SQLite DB for user: "${userClean}"`);
+      return res.json({ success: true, token: ADMIN_TOKEN });
+    }
+  } catch (err: any) {
+    console.error('[Admin Login] SQLite DB query error:', err);
+  }
+
+  // 2. Fallback code/env-level authentication (resilience fallback)
   const userMatches = 
     userClean.toLowerCase() === ADMIN_USER.toLowerCase() ||
     userClean.toLowerCase() === 'admin-nandakumar' ||
@@ -491,7 +544,7 @@ app.post('/api/admin/login', (req, res) => {
     passClean === ADMIN_PASS || 
     passClean === 'Drowssap@123$';
 
-  console.log(`[Admin Login] User input: "${userClean}". Target: "${ADMIN_USER}". Matched User: ${userMatches}. Matched Pass: ${passMatches}`);
+  console.log(`[Admin Login] Fallback check: User matches: ${userMatches}, Pass matches: ${passMatches}`);
 
   if (userMatches && passMatches) {
     return res.json({ success: true, token: ADMIN_TOKEN });
@@ -499,7 +552,7 @@ app.post('/api/admin/login', (req, res) => {
 
   return res.status(401).json({ 
     success: false, 
-    error: 'Invalid identifier or password. Please verify your environment variable mapped parameters or use your default fallback credentials.' 
+    error: 'Invalid identifier or password. Please verify your admin database records or use default fallback credentials.' 
   });
 });
 
@@ -531,17 +584,22 @@ app.get('/api/admin/analytics', (req, res) => {
       ORDER BY count DESC
     `).all();
 
-    // 4. Most active calculator/developer tools
+    // 4. Most active calculator/developer tools (All tools, no LIMIT 10)
     const toolUsage = db.prepare(`
       SELECT details as tool_id, COUNT(*) as count 
       FROM activity_logs 
       WHERE action_type = 'tool_use' 
       GROUP BY details 
-      ORDER BY count DESC 
-      LIMIT 10
+      ORDER BY count DESC
     `).all();
 
-    // 5. Grid/Timeline parameters (Last 14 active calendar days)
+    // 5. Retrieve all tool ratings from SQLite
+    const toolRatings = db.prepare(`
+      SELECT tool_id, rating_sum, rating_count 
+      FROM tool_ratings
+    `).all();
+
+    // 6. Grid/Timeline parameters (Last 14 active calendar days)
     const dailyStats = db.prepare(`
       SELECT 
         date(created_at) as day_date, 
@@ -553,7 +611,7 @@ app.get('/api/admin/analytics', (req, res) => {
       LIMIT 14
     `).all();
 
-    // 6. Recent activity timeline audit log feed
+    // 7. Recent activity timeline audit log feed
     const recentLogs = db.prepare(`
       SELECT 
         l.id, 
@@ -578,6 +636,7 @@ app.get('/api/admin/analytics', (req, res) => {
       platforms,
       referrers,
       toolUsage,
+      toolRatings,
       dailyStats,
       recentLogs
     });
